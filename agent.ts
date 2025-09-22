@@ -87,18 +87,40 @@ export default blink.agent({
 
                 const jsonData = await response.json();
                 
+                // Debug: Log the actual response structure
+                console.log("PathFactory API Response:", JSON.stringify(jsonData, null, 2));
+                
+                // Handle different possible response structures
+                let experiences = [];
+                if (jsonData && Array.isArray(jsonData)) {
+                  // Direct array response
+                  experiences = jsonData;
+                } else if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+                  // Wrapped in data property
+                  experiences = jsonData.data;
+                } else if (jsonData && jsonData.experiences && Array.isArray(jsonData.experiences)) {
+                  // Wrapped in experiences property
+                  experiences = jsonData.experiences;
+                } else {
+                  // Unexpected format
+                  return {
+                    success: false,
+                    error: "Unexpected API response format",
+                    actual_response: jsonData,
+                    url_attempted: url
+                  };
+                }
+                
                 // Apply client-side limit if needed
-                const limitedData = {
-                  ...jsonData,
-                  data: jsonData.data.slice(0, limit)
-                };
+                const limitedExperiences = experiences.slice(0, limit);
 
                 return {
                   success: true,
-                  experiences: limitedData.data,
-                  total_found: jsonData.data.length,
+                  experiences: limitedExperiences,
+                  total_found: experiences.length,
                   limited_to: limit,
-                  pagination: jsonData.pagination
+                  pagination: jsonData.pagination || null,
+                  raw_response_keys: Object.keys(jsonData || {})
                 };
               } catch (error) {
                 return {
