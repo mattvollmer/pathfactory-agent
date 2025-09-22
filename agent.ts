@@ -596,6 +596,63 @@ export default blink.agent({
               }
             },
           },
+          get_current_date: {
+            description: "Get the current date and time in Eastern Time (EST/EDT) timezone.",
+            inputSchema: z.object({
+              include_time: z.boolean().optional().default(false).describe("Whether to include time (hours:minutes) or just the date")
+            }),
+            execute: async ({ include_time = false }) => {
+              try {
+                const now = new Date();
+                
+                // Convert to Eastern Time
+                const easternTime = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+                
+                // Format options
+                const dateOptions: Intl.DateTimeFormatOptions = {
+                  timeZone: "America/New_York",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  weekday: "long"
+                };
+                
+                const timeOptions: Intl.DateTimeFormatOptions = {
+                  timeZone: "America/New_York",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true
+                };
+                
+                const formattedDate = easternTime.toLocaleDateString("en-US", dateOptions);
+                const formattedTime = easternTime.toLocaleTimeString("en-US", timeOptions);
+                
+                // Determine if we're in EST or EDT
+                const isDST = easternTime.getTimezoneOffset() < now.getTimezoneOffset();
+                const timezone = isDST ? "EDT" : "EST";
+                
+                // ISO format for API usage
+                const isoDate = easternTime.toISOString().split('T')[0];
+                const isoDateTime = easternTime.toISOString();
+                
+                return {
+                  success: true,
+                  formatted_date: formattedDate,
+                  formatted_time: formattedTime,
+                  timezone: timezone,
+                  full_datetime: include_time ? `${formattedDate} at ${formattedTime} ${timezone}` : formattedDate,
+                  iso_date: isoDate,
+                  iso_datetime: isoDateTime,
+                  timestamp: easternTime.getTime()
+                };
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error instanceof Error ? error.message : "Unknown error occurred getting current date"
+                };
+              }
+            }
+          },
         },
         {
           async onModelIntents(modelIntents) {
@@ -648,15 +705,18 @@ You have access to tools that can:
 - Get pageview counts and data for specific content by content ID or UUID
 - Retrieve content assets by ID, UUID, slug, or creation date filters
 - Analyze visitor sessions by time, experience, visitor, or company data
+- Get the current date and time in Eastern Time (EST/EDT) for time-based queries
 - Perform web searches for additional context
 - Interact via Slack integration
 
 When helping users with PathFactory-related tasks:
+- Use the get_current_date tool when you need to know today's date for time-based filtering or analysis
 - Use the find_experiences tool to search for specific experiences by type, date, ID, or UUID
 - Use the get_pageviews_by_content tool to analyze content performance and engagement metrics
 - Use the get_content_assets tool to find and retrieve specific content assets and their details
 - Use the get_sessions tool to analyze visitor behavior, session data, and engagement patterns
 - Provide clear, actionable information about experiences, content performance, visitor behavior, and content management
 - Help users understand their PathFactory data and optimize their content experiences
+- When users ask about "today", "this week", "recently", or other time-relative terms, use the date tool to get accurate current date context
 
 Always be helpful, accurate, and focused on PathFactory-related workflows and data analysis.`;
