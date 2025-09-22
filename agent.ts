@@ -301,6 +301,126 @@ export default blink.agent({
               }
             }
           },
+          get_sessions: {
+            description: "Get PathFactory visitor sessions with filtering by time, experience, visitor, or company data.",
+            inputSchema: z.object({
+              session_id: z.string().optional().describe("Filter by specific session ID"),
+              visitor_id: z.number().optional().describe("Filter by visitor ID"),
+              visitor_uuid: z.string().optional().describe("Filter by visitor UUID"),
+              experience_id: z.number().optional().describe("Filter by experience ID"),
+              experience_type: z.enum([
+                "target",
+                "recommend", 
+                "website",
+                "virtual_event",
+                "microsite",
+                "templated_experience",
+                "chatfactory",
+                "website_tools"
+              ]).optional().describe("Filter by experience type"),
+              campaign_id: z.string().optional().describe("Filter by campaign ID"),
+              domain: z.string().optional().describe("Filter by domain"),
+              company_name: z.string().optional().describe("Filter by company name"),
+              start_time_gte: z.string().optional().describe("Get sessions from this date/time onwards (ISO format)"),
+              start_time_lte: z.string().optional().describe("Get sessions up to this date/time (ISO format)"),
+              limit: z.number().optional().default(100).describe("Maximum number of sessions to return (max 1000)"),
+              offset: z.number().optional().default(0).describe("Offset for pagination")
+            }),
+            execute: async ({ 
+              session_id,
+              visitor_id, 
+              visitor_uuid,
+              experience_id,
+              experience_type,
+              campaign_id,
+              domain,
+              company_name,
+              start_time_gte,
+              start_time_lte,
+              limit = 100,
+              offset = 0
+            }) => {
+              const apiKey = process.env.PATHFACTORY_KEY;
+              if (!apiKey) {
+                throw new Error("PATHFACTORY_KEY environment variable is required");
+              }
+
+              // Build query parameters
+              const params = new URLSearchParams();
+              if (session_id) params.append("session_id", session_id);
+              if (visitor_id) params.append("visitor_id", visitor_id.toString());
+              if (visitor_uuid) params.append("visitor_uuid", visitor_uuid);
+              if (experience_id) params.append("experience_id", experience_id.toString());
+              if (experience_type) params.append("experience_type", experience_type);
+              if (campaign_id) params.append("campaign_id", campaign_id);
+              if (domain) params.append("domain", domain);
+              if (company_name) params.append("company_name", company_name);
+              if (start_time_gte) params.append("start_time_gte", start_time_gte);
+              if (start_time_lte) params.append("start_time_lte", start_time_lte);
+              params.append("limit", Math.min(limit, 1000).toString()); // Enforce API max
+              params.append("offset", offset.toString());
+              params.append("_format", "json");
+              
+              const url = `https://datalakeapi.pathfactory.com/public/v3/sessions/?${params.toString()}`;
+              
+              try {
+                const response = await fetch(url, {
+                  method: "GET",
+                  headers: {
+                    "access_token": apiKey,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                  }
+                });
+
+                if (!response.ok) {
+                  throw new Error(`PathFactory API error: ${response.status} ${response.statusText}`);
+                }
+
+                const jsonData = await response.json();
+                
+                // Debug: Log the actual response structure
+                console.log("PathFactory Sessions API Response:", JSON.stringify(jsonData, null, 2));
+                
+                // Handle different possible response structures
+                let sessions = [];
+                if (jsonData && Array.isArray(jsonData)) {
+                  // Direct array response
+                  sessions = jsonData;
+                } else if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+                  // Wrapped in data property
+                  sessions = jsonData.data;
+                } else if (jsonData && jsonData.sessions && Array.isArray(jsonData.sessions)) {
+                  // Wrapped in sessions property
+                  sessions = jsonData.sessions;
+                } else {
+                  // Unexpected format
+                  return {
+                    success: false,
+                    error: "Unexpected API response format",
+                    actual_response: jsonData,
+                    url_attempted: url
+                  };
+                }
+
+                return {
+                  success: true,
+                  sessions: sessions,
+                  total_found: sessions.length,
+                  limit_used: Math.min(limit, 1000),
+                  offset_used: offset,
+                  pagination: jsonData.pagination || null,
+                  raw_response_keys: Object.keys(jsonData || {})
+                };
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error instanceof Error ? error.message : "Unknown error occurred",
+                  url_attempted: url
+                };
+              }
+            }
+          },
         },
         {
           onModelIntents(modelIntents) {
@@ -357,6 +477,7 @@ You have access to tools that can:
 - Search and find PathFactory experiences/experiments using various filters
 - Get pageview counts and data for specific content by content ID or UUID
 - Retrieve content assets by ID, UUID, slug, or creation date filters
+- Analyze visitor sessions by time, experience, visitor, or company data
 - Perform web searches for additional context
 - Interact via Slack integration
 
@@ -364,7 +485,8 @@ When helping users with PathFactory-related tasks:
 - Use the find_experiences tool to search for specific experiences by type, date, ID, or UUID
 - Use the get_pageviews_by_content tool to analyze content performance and engagement metrics
 - Use the get_content_assets tool to find and retrieve specific content assets and their details
-- Provide clear, actionable information about experiences, content performance, and content management
+- Use the get_sessions tool to analyze visitor behavior, session data, and engagement patterns
+- Provide clear, actionable information about experiences, content performance, visitor behavior, and content management
 - Help users understand their PathFactory data and optimize their content experiences
 
 Always be helpful, accurate, and focused on PathFactory-related workflows and data analysis.`;
