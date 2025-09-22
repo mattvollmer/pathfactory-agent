@@ -205,6 +205,102 @@ export default blink.agent({
               }
             }
           },
+          get_content_assets: {
+            description: "Get PathFactory content assets by content ID, slug, UUID, or other filters.",
+            inputSchema: z.object({
+              content_id: z.number().optional().describe("Filter by specific content ID"),
+              content_uuid: z.string().optional().describe("Filter by content UUID"),
+              slug: z.string().optional().describe("Filter by content slug"),
+              created_at_start: z.string().optional().describe("Filter content created from this date (ISO format)"),
+              created_at_end: z.string().optional().describe("Filter content created until this date (ISO format)"),
+              limit: z.number().optional().default(100).describe("Maximum number of assets to return (max 1000)"),
+              offset: z.number().optional().default(0).describe("Offset for pagination")
+            }),
+            execute: async ({ 
+              content_id, 
+              content_uuid, 
+              slug,
+              created_at_start,
+              created_at_end,
+              limit = 100,
+              offset = 0
+            }) => {
+              const apiKey = process.env.PATHFACTORY_KEY;
+              if (!apiKey) {
+                throw new Error("PATHFACTORY_KEY environment variable is required");
+              }
+
+              // Build query parameters
+              const params = new URLSearchParams();
+              if (content_id) params.append("content_id", content_id.toString());
+              if (content_uuid) params.append("content_uuid", content_uuid);
+              if (slug) params.append("slug", slug);
+              if (created_at_start) params.append("created_at_start", created_at_start);
+              if (created_at_end) params.append("created_at_end", created_at_end);
+              params.append("limit", Math.min(limit, 1000).toString()); // Enforce API max
+              params.append("offset", offset.toString());
+              params.append("_format", "json");
+              
+              const url = `https://datalakeapi.pathfactory.com/public/v3/content_assets/?${params.toString()}`;
+              
+              try {
+                const response = await fetch(url, {
+                  method: "GET",
+                  headers: {
+                    "access_token": apiKey,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                  }
+                });
+
+                if (!response.ok) {
+                  throw new Error(`PathFactory API error: ${response.status} ${response.statusText}`);
+                }
+
+                const jsonData = await response.json();
+                
+                // Debug: Log the actual response structure
+                console.log("PathFactory Content Assets API Response:", JSON.stringify(jsonData, null, 2));
+                
+                // Handle different possible response structures
+                let contentAssets = [];
+                if (jsonData && Array.isArray(jsonData)) {
+                  // Direct array response
+                  contentAssets = jsonData;
+                } else if (jsonData && jsonData.data && Array.isArray(jsonData.data)) {
+                  // Wrapped in data property
+                  contentAssets = jsonData.data;
+                } else if (jsonData && jsonData.content_assets && Array.isArray(jsonData.content_assets)) {
+                  // Wrapped in content_assets property
+                  contentAssets = jsonData.content_assets;
+                } else {
+                  // Unexpected format
+                  return {
+                    success: false,
+                    error: "Unexpected API response format",
+                    actual_response: jsonData,
+                    url_attempted: url
+                  };
+                }
+
+                return {
+                  success: true,
+                  content_assets: contentAssets,
+                  total_found: contentAssets.length,
+                  limit_used: Math.min(limit, 1000),
+                  offset_used: offset,
+                  pagination: jsonData.pagination || null,
+                  raw_response_keys: Object.keys(jsonData || {})
+                };
+              } catch (error) {
+                return {
+                  success: false,
+                  error: error instanceof Error ? error.message : "Unknown error occurred",
+                  url_attempted: url
+                };
+              }
+            }
+          },
         },
         {
           onModelIntents(modelIntents) {
@@ -260,13 +356,15 @@ const system = `You are PathFactory, an AI assistant specialized in helping user
 You have access to tools that can:
 - Search and find PathFactory experiences/experiments using various filters
 - Get pageview counts and data for specific content by content ID or UUID
+- Retrieve content assets by ID, UUID, slug, or creation date filters
 - Perform web searches for additional context
 - Interact via Slack integration
 
 When helping users with PathFactory-related tasks:
 - Use the find_experiences tool to search for specific experiences by type, date, ID, or UUID
 - Use the get_pageviews_by_content tool to analyze content performance and engagement metrics
-- Provide clear, actionable information about experiences, content performance, and user engagement
+- Use the get_content_assets tool to find and retrieve specific content assets and their details
+- Provide clear, actionable information about experiences, content performance, and content management
 - Help users understand their PathFactory data and optimize their content experiences
 
 Always be helpful, accurate, and focused on PathFactory-related workflows and data analysis.`;
