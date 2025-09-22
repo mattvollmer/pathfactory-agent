@@ -59,6 +59,7 @@ export default blink.agent({
               if (experience_uuid) params.append("experience_uuid", experience_uuid);
               if (experience_type) params.append("experience_type", experience_type);
               if (format) params.append("_format", format);
+              params.append("access_token", apiKey);
               
               const url = `https://datalakeapi.pathfactory.com/public/v3/experiences/?${params.toString()}`;
               
@@ -66,7 +67,6 @@ export default blink.agent({
                 const response = await fetch(url, {
                   method: "GET",
                   headers: {
-                    "Authorization": `Bearer ${apiKey}`,
                     "Content-Type": "application/json",
                     "Accept": format === "csv" ? "text/csv" : "application/json"
                   }
